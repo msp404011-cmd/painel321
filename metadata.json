@@ -1,0 +1,6 @@
+{
+  "name": "Painel Super Admin Master",
+  "description": "Painel de Super Admin Master para gestão de plataforma SaaS, faturamento PIX Mercado Pago, controle de assistências técnicas e ações rápidas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
