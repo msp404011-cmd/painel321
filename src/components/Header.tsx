@@ -47,8 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Gestão de Assistências Técnicas & Mensalidades</span>
               <span className="inline-block w-1 h-1 rounded-full bg-slate-600"></span>
               <span className="text-emerald-400 font-medium flex items-center gap-1">
-                <Zap className="w-3 h-3 text-sky-400 fill-sky-400" />
-                API Mercado Pago PIX Ativa
+                <Database className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                Firestore Realtime (empresas / pagamentos)
               </span>
             </p>
           </div>

@@ -9,33 +9,23 @@ import { StoreModal } from './components/StoreModal';
 import { StoreDetailModal } from './components/StoreDetailModal';
 import { CobrancaModal } from './components/CobrancaModal';
 import { Toast } from './components/Toast';
+import {
+  subscribeEmpresas,
+  subscribePagamentos,
+  addEmpresaFirestore,
+  updateEmpresaStatusFirestore,
+  extendEmpresaVencimentoFirestore,
+  updateEmpresaFirestore,
+  deleteEmpresaFirestore,
+  addPagamentoFirestore,
+  seedDemoDataFirestore,
+  clearAllFirestoreData
+} from './lib/firebaseService';
 
 export default function App() {
-  // Persistence via localStorage
-  const [assistencias, setAssistencias] = useState<Assistencia[]>(() => {
-    const isZeroed = localStorage.getItem('saas_admin_zeroed');
-    if (isZeroed === 'true') {
-      return [];
-    }
-    const saved = localStorage.getItem('saas_admin_assistencias');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
-    }
-    // Default to empty array as user explicitly requested "zere ele total"
-    return [];
-  });
-
-  const [transactions, setTransactions] = useState<TransacaoPix[]>(() => {
-    const isZeroed = localStorage.getItem('saas_admin_zeroed');
-    if (isZeroed === 'true') {
-      return [];
-    }
-    const saved = localStorage.getItem('saas_admin_transactions');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
-    }
-    return [];
-  });
+  const [assistencias, setAssistencias] = useState<Assistencia[]>([]);
+  const [transactions, setTransactions] = useState<TransacaoPix[]>([]);
+  const [isLoadingFirestore, setIsLoadingFirestore] = useState(true);
 
   // Filters & Notifications
   const [activeStatusFilter, setActiveStatusFilter] = useState<FiltroStatus>('todos');
@@ -48,15 +38,6 @@ export default function App() {
   const [selectedDetailAssistencia, setSelectedDetailAssistencia] = useState<Assistencia | null>(null);
   const [selectedCobrancaAssistencia, setSelectedCobrancaAssistencia] = useState<Assistencia | null>(null);
 
-  // Sync state to localStorage
-  useEffect(() => {
-    localStorage.setItem('saas_admin_assistencias', JSON.stringify(assistencias));
-  }, [assistencias]);
-
-  useEffect(() => {
-    localStorage.setItem('saas_admin_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
   // Toast Helper
   const addToast = (message: string, type: 'success' | 'warning' | 'error' | 'info') => {
     const newToast: ToastNotification = {
@@ -66,7 +47,6 @@ export default function App() {
     };
     setToasts((prev) => [...prev, newToast]);
 
-    // Auto dismiss after 4 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== newToast.id));
     }, 4000);
@@ -76,123 +56,165 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // 1-CLICK ACTION 1: Bloquear ou Desbloquear
-  const handleToggleBlock = (id: string) => {
-    setAssistencias((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const isCurrentlyBlocked = item.status === 'bloqueado';
-          const nextStatus = isCurrentlyBlocked ? 'ativo' : 'bloqueado';
+  // Realtime Firestore Subscriptions
+  useEffect(() => {
+    setIsLoadingFirestore(true);
 
-          if (isCurrentlyBlocked) {
-            addToast(`Acesso liberado para a assistência "${item.nome}" com sucesso!`, 'success');
-          } else {
-            addToast(`Acesso bloqueado para a assistência "${item.nome}" com sucesso!`, 'error');
-          }
-
-          return { ...item, status: nextStatus };
-        }
-        return item;
-      })
+    const unsubEmpresas = subscribeEmpresas(
+      (data) => {
+        setAssistencias(data);
+        setIsLoadingFirestore(false);
+      },
+      (err) => {
+        console.error('Erro Firestore Empresas:', err);
+        addToast('Erro de conexão ao banco Firestore (empresas).', 'error');
+        setIsLoadingFirestore(false);
+      }
     );
+
+    const unsubPagamentos = subscribePagamentos(
+      (data) => {
+        setTransactions(data);
+      },
+      (err) => {
+        console.error('Erro Firestore Pagamentos:', err);
+      }
+    );
+
+    return () => {
+      unsubEmpresas();
+      unsubPagamentos();
+    };
+  }, []);
+
+  // 1-CLICK ACTION 1: Bloquear ou Desbloquear (grava direto no Firestore)
+  const handleToggleBlock = async (id: string) => {
+    const target = assistencias.find((a) => a.id === id);
+    if (!target) return;
+
+    const isCurrentlyBlocked = target.status === 'bloqueado';
+    const nextStatus = isCurrentlyBlocked ? 'ativo' : 'bloqueado';
+
+    try {
+      await updateEmpresaStatusFirestore(id, nextStatus);
+      if (isCurrentlyBlocked) {
+        addToast(`Acesso liberado para a assistência "${target.nome}" no Firestore!`, 'success');
+      } else {
+        addToast(`Acesso bloqueado para a assistência "${target.nome}" no Firestore!`, 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao atualizar status no Firestore.', 'error');
+    }
   };
 
-  // 1-CLICK ACTION 2: Prorrogar Vencimento (+30 dias)
-  const handleExtendVencimento = (id: string) => {
-    setAssistencias((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          const newVencimento = add30Days(item.dataVencimento);
-          const wasInadimplente = item.status === 'inadimplente';
-          const nextStatus = wasInadimplente ? 'ativo' : item.status;
+  // 1-CLICK ACTION 2: Prorrogar Vencimento (+30 dias) (grava direto no Firestore)
+  const handleExtendVencimento = async (id: string) => {
+    const target = assistencias.find((a) => a.id === id);
+    if (!target) return;
 
-          addToast(
-            `Vencimento de "${item.nome}" prorrogado para ${formatDateBR(newVencimento)} (+30 dias)!${
-              wasInadimplente ? ' Status reativado para ATIVO.' : ''
-            }`,
-            'success'
-          );
+    const newVencimento = add30Days(target.dataVencimento);
+    const wasInadimplente = target.status === 'inadimplente';
 
-          return {
-            ...item,
-            dataVencimento: newVencimento,
-            status: nextStatus,
-          };
-        }
-        return item;
-      })
-    );
-  };
-
-  // Create / Edit Store
-  const handleSaveStore = (storeData: Assistencia) => {
-    if (editingAssistencia) {
-      setAssistencias((prev) =>
-        prev.map((item) => (item.id === storeData.id ? storeData : item))
+    try {
+      await extendEmpresaVencimentoFirestore(id, newVencimento);
+      addToast(
+        `Vencimento de "${target.nome}" prorrogado para ${formatDateBR(newVencimento)} (+30 dias) no Firestore!${
+          wasInadimplente ? ' Status reativado para ATIVO.' : ''
+        }`,
+        'success'
       );
-      addToast(`Dados da assistência "${storeData.nome}" atualizados!`, 'success');
-    } else {
-      setAssistencias((prev) => [storeData, ...prev]);
-      addToast(`Nova assistência "${storeData.nome}" cadastrada no sistema!`, 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao prorrogar vencimento no Firestore.', 'error');
+    }
+  };
+
+  // Create / Edit Store (grava direto no Firestore)
+  const handleSaveStore = async (storeData: Assistencia) => {
+    try {
+      if (editingAssistencia && editingAssistencia.id) {
+        await updateEmpresaFirestore(editingAssistencia.id, storeData);
+        addToast(`Dados da assistência "${storeData.nome}" atualizados no Firestore!`, 'success');
+      } else {
+        const { id, ...dataToSave } = storeData;
+        await addEmpresaFirestore(dataToSave);
+        addToast(`Nova assistência "${storeData.nome}" gravada na coleção empresas do Firestore!`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao salvar empresa no Firestore.', 'error');
     }
 
     setIsStoreModalOpen(false);
     setEditingAssistencia(null);
   };
 
-  // Delete Store
-  const handleDeleteAssistencia = (id: string) => {
+  // Delete Store (exclui no Firestore)
+  const handleDeleteAssistencia = async (id: string) => {
     const target = assistencias.find((a) => a.id === id);
     if (!target) return;
 
-    if (window.confirm(`Tem certeza que deseja excluir o cadastro da assistência "${target.nome}"?`)) {
-      setAssistencias((prev) => prev.filter((a) => a.id !== id));
-      addToast(`Assistência "${target.nome}" excluída da base.`, 'info');
+    if (window.confirm(`Tem certeza que deseja excluir o cadastro da assistência "${target.nome}" do Firestore?`)) {
+      try {
+        await deleteEmpresaFirestore(id);
+        addToast(`Assistência "${target.nome}" removida da coleção empresas.`, 'info');
+      } catch (err) {
+        console.error(err);
+        addToast('Erro ao excluir empresa do Firestore.', 'error');
+      }
     }
   };
 
-  // Add simulated PIX Transaction
-  const handleAddSimulatedTransaction = (tx: TransacaoPix) => {
-    setTransactions((prev) => [tx, ...prev]);
+  // Add simulated PIX Transaction (grava no Firestore em 'pagamentos' e atualiza 'empresas')
+  const handleAddSimulatedTransaction = async (tx: TransacaoPix) => {
+    try {
+      const { id, ...txData } = tx;
+      await addPagamentoFirestore(txData);
 
-    // Check if store exists and update payment status & extend vencimento if needed
-    setAssistencias((prev) =>
-      prev.map((item) => {
-        if (
-          item.nome.toLowerCase().includes(tx.assistenciaNome.toLowerCase()) ||
-          item.cnpj === tx.cnpj
-        ) {
-          const newVenc = add30Days(item.dataVencimento);
-          return {
-            ...item,
-            ultimoPagamento: tx.data.split(' ')[0],
-            dataVencimento: newVenc,
-            status: 'ativo',
-          };
-        }
-        return item;
-      })
-    );
+      // Se encontrou empresa correspondente, atualiza vencimento e último pagamento no Firestore
+      const matched = assistencias.find(
+        (a) => a.nome.toLowerCase().includes(tx.assistenciaNome.toLowerCase()) || a.cnpj === tx.cnpj
+      );
+
+      if (matched) {
+        const newVenc = add30Days(matched.dataVencimento);
+        await updateEmpresaFirestore(matched.id, {
+          ultimoPagamento: tx.data.split(' ')[0],
+          dataVencimento: newVenc,
+          status: 'ativo'
+        });
+      }
+
+      addToast(`Pagamento PIX registrado no Firestore!`, 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao registrar pagamento no Firestore.', 'error');
+    }
   };
 
-  // Zero out all system data completely
-  const handleZeroData = () => {
-    setAssistencias([]);
-    setTransactions([]);
-    localStorage.setItem('saas_admin_zeroed', 'true');
-    localStorage.setItem('saas_admin_assistencias', JSON.stringify([]));
-    localStorage.setItem('saas_admin_transactions', JSON.stringify([]));
-    addToast('Sistema zerado com sucesso! Base limpa (0 assistências, R$ 0,00 faturado).', 'warning');
+  // Zero out all system data completely in Firestore
+  const handleZeroData = async () => {
+    if (window.confirm('Tem certeza que deseja ZERAR completamente as coleções "empresas" e "pagamentos" no Firestore?')) {
+      try {
+        await clearAllFirestoreData();
+        addToast('Banco Firestore zerado com sucesso! Coleções empresas e pagamentos limpas.', 'warning');
+      } catch (err) {
+        console.error(err);
+        addToast('Erro ao zerar dados no Firestore.', 'error');
+      }
+    }
   };
 
-  // Restore initial mock data
-  const handleLoadDemoData = () => {
-    setAssistencias(INITIAL_ASSISTENCIAS);
-    setTransactions(INITIAL_TRANSACTIONS);
-    localStorage.setItem('saas_admin_zeroed', 'false');
-    localStorage.setItem('saas_admin_assistencias', JSON.stringify(INITIAL_ASSISTENCIAS));
-    localStorage.setItem('saas_admin_transactions', JSON.stringify(INITIAL_TRANSACTIONS));
-    addToast('Dados demonstrativos recarregados com sucesso!', 'success');
+  // Restore initial mock data to Firestore
+  const handleLoadDemoData = async () => {
+    try {
+      await seedDemoDataFirestore();
+      addToast('Dados de demonstração gerados nas coleções "empresas" e "pagamentos" do Firestore!', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao carregar dados de demonstração no Firestore.', 'error');
+    }
   };
 
   // Stats computation
