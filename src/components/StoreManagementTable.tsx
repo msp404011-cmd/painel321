@@ -17,11 +17,15 @@ import {
   Clock,
   Send,
   Eye,
+  EyeOff,
   Edit,
   Trash2,
   X,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Key,
+  Copy,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -51,6 +55,18 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPlano, setSelectedPlano] = useState<string>('todos');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [copiedSenhaId, setCopiedSenhaId] = useState<string | null>(null);
+  const [showSenhaMap, setShowSenhaMap] = useState<Record<string, boolean>>({});
+
+  const handleCopySenha = (id: string, senhaText: string) => {
+    navigator.clipboard.writeText(senhaText);
+    setCopiedSenhaId(id);
+    setTimeout(() => setCopiedSenhaId(null), 2000);
+  };
+
+  const toggleShowSenha = (id: string) => {
+    setShowSenhaMap(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Filtered logic
   const filteredAssistencias = useMemo(() => {
@@ -59,6 +75,8 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
       if (activeStatusFilter === 'ativos' && item.status !== 'ativo') return false;
       if (activeStatusFilter === 'bloqueados' && item.status !== 'bloqueado') return false;
       if (activeStatusFilter === 'inadimplentes' && item.status !== 'inadimplente') return false;
+      if (activeStatusFilter === 'teste' && item.status !== 'teste') return false;
+      if (activeStatusFilter === 'teste_pendente' && item.status !== 'teste_pendente') return false;
 
       // Plan filter
       if (selectedPlano !== 'todos' && item.plano !== selectedPlano) return false;
@@ -85,7 +103,8 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
     const ativos = assistencias.filter(a => a.status === 'ativo').length;
     const bloqueados = assistencias.filter(a => a.status === 'bloqueado').length;
     const inadimplentes = assistencias.filter(a => a.status === 'inadimplente').length;
-    return { total, ativos, bloqueados, inadimplentes };
+    const testes = assistencias.filter(a => a.status === 'teste' || a.status === 'teste_pendente').length;
+    return { total, ativos, bloqueados, inadimplentes, testes };
   }, [assistencias]);
 
   // Helper to calculate days remaining or overdue
@@ -242,6 +261,23 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
                 {counts.bloqueados}
               </span>
             </button>
+
+            <button
+              onClick={() => onChangeStatusFilter('teste')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                activeStatusFilter === 'teste' || activeStatusFilter === 'teste_pendente'
+                  ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-sky-400" />
+              <span>Testes</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                activeStatusFilter === 'teste' || activeStatusFilter === 'teste_pendente' ? 'bg-slate-950/30 text-slate-900 font-bold' : 'bg-slate-800 text-sky-400'
+              }`}>
+                {counts.testes}
+              </span>
+            </button>
           </div>
 
           {/* Plano Dropdown Filter */}
@@ -338,9 +374,9 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
                       </div>
                     </td>
 
-                    {/* E-mail */}
+                    {/* E-mail & Credenciais de Acesso */}
                     <td className="py-4 px-4 text-slate-300">
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col gap-1">
                         <span className="flex items-center gap-1 text-slate-200">
                           <Mail className="w-3 h-3 text-slate-400" />
                           {item.email}
@@ -349,24 +385,64 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
                           <Phone className="w-3 h-3 text-slate-500" />
                           {item.telefone}
                         </span>
+
+                        {/* Credenciais de Acesso Firestore */}
+                        <div className="mt-1 pt-1 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5 text-[10px]">
+                          <div className="flex items-center gap-1 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800">
+                            <Key className="w-2.5 h-2.5 text-sky-400" />
+                            <span className="text-slate-400 font-mono">
+                              {showSenhaMap[item.id] ? (item.senha || '••••••') : '••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleShowSenha(item.id)}
+                              className="text-slate-500 hover:text-slate-300 ml-0.5 cursor-pointer"
+                              title={showSenhaMap[item.id] ? 'Ocultar senha' : 'Ver senha'}
+                            >
+                              {showSenhaMap[item.id] ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopySenha(item.id, item.senha || '')}
+                              className="text-slate-500 hover:text-emerald-400 ml-0.5 cursor-pointer"
+                              title="Copiar senha do Firestore"
+                            >
+                              {copiedSenhaId === item.id ? (
+                                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-2.5 h-2.5" />
+                              )}
+                            </button>
+                          </div>
+
+                          {item.loginUsuario && (
+                            <span className="bg-sky-500/10 text-sky-300 px-1.5 py-0.5 rounded text-[10px] font-mono border border-sky-500/20">
+                              @{item.loginUsuario}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
-                    {/* Plano */}
+                    {/* Plano & Valor Reconhecido */}
                     <td className="py-4 px-4">
                       <div className="flex flex-col gap-1">
-                        <span
-                          className={`inline-self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                            item.plano === 'Enterprise'
-                              ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
-                              : item.plano === 'Profissional'
-                              ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                              : 'bg-slate-800 text-slate-300 border-slate-700'
-                          }`}
-                        >
-                          {item.plano}
-                        </span>
-                        <span className="text-emerald-400 font-bold text-xs">
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`inline-self-start px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                              item.plano === 'Enterprise'
+                                ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                                : item.plano === 'Profissional'
+                                ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
+                                : item.plano === 'Teste'
+                                ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {item.plano}
+                          </span>
+                        </div>
+                        <span className="text-emerald-400 font-bold text-xs flex items-center gap-1">
                           {formatCurrencyBRL(item.valorMensalidade)}
                           <span className="text-[10px] text-slate-500 font-normal">/mês</span>
                         </span>
@@ -379,6 +455,18 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold text-[11px]">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                           Ativo
+                        </span>
+                      )}
+                      {item.status === 'teste' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/30 font-bold text-[11px]">
+                          <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                          Teste / Trial
+                        </span>
+                      )}
+                      {item.status === 'teste_pendente' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[11px]">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Teste Expirado
                         </span>
                       )}
                       {isInadimplente && (

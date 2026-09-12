@@ -1,5 +1,27 @@
 {
   "entities": {
+    "user_accounts": {
+      "fields": {
+        "id": "string",
+        "nome": "string",
+        "cnpj": "string",
+        "responsavel": "string",
+        "email": "string",
+        "telefone": "string",
+        "cidadeUf": "string",
+        "plano": "string",
+        "valorMensalidade": "number",
+        "status": "string",
+        "ativo": "boolean",
+        "bloqueado": "boolean",
+        "inadimplente": "boolean",
+        "dataVencimento": "string",
+        "dataCadastro": "string",
+        "ultimoPagamento": "string",
+        "metodoPagamento": "string",
+        "observacoes": "string"
+      }
+    },
     "empresas": {
       "fields": {
         "id": "string",

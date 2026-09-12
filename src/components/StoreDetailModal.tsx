@@ -78,6 +78,18 @@ export const StoreDetailModal: React.FC<StoreDetailModalProps> = ({
                     Ativo
                   </span>
                 )}
+                {assistencia.status === 'teste' && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 text-xs font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                    Teste / Trial
+                  </span>
+                )}
+                {assistencia.status === 'teste_pendente' && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Teste Expirado
+                  </span>
+                )}
                 {isInadimplente && (
                   <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
@@ -172,6 +184,12 @@ export const StoreDetailModal: React.FC<StoreDetailModalProps> = ({
                 <div>
                   <span className="text-slate-500 block">Telefone / WhatsApp</span>
                   <span className="font-semibold text-slate-200">{assistencia.telefone}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Senha de Acesso do Cliente</span>
+                  <span className="font-mono font-bold text-sky-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    {assistencia.senha || '123456'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Localização</span>

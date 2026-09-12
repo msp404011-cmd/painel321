@@ -1,4 +1,60 @@
-import { Assistencia, TransacaoPix } from '../types';
+import { Assistencia, TransacaoPix, PlanoGestorInfo } from '../types';
+
+export const GESTOR_OFFICIAL_PLANS: PlanoGestorInfo[] = [
+  {
+    id: 'pdv_vendas',
+    nome: 'Plano PDV & Vendas',
+    valor: 34.90,
+    badge: 'PDV & VENDAS',
+    subtitulo: 'Para comércios e lojas de vendas balcão',
+    descricao: 'Focado exclusivamente em Frente de Caixa (PDV), Vendas Balcão, Estoque e Clientes.',
+    cor: 'cyan',
+    recursos: [
+      'Frente de Caixa (PDV) Rápido e Ágil',
+      'Vendas Balcão e Emissão de Recibos Térmicos',
+      'Cadastro de Produtos e Controle de Estoque',
+      'Gestão de Clientes e Crediário / A Prazo',
+      'Abertura, Sangria e Fechamento de Caixa',
+      'Relatórios de Vendas e Faturamento Balcão',
+    ],
+  },
+  {
+    id: 'assistencia_tecnica',
+    nome: 'Plano Assistência Técnica',
+    valor: 69.90,
+    badge: '⭐ RECOMENDADO',
+    destaque: true,
+    subtitulo: 'Completo para gestão de O.S. e Loja',
+    descricao: 'Solução completa para Assistência Técnica: OS, Aparelhos, Checklists, PDV e Peças.',
+    cor: 'amber',
+    recursos: [
+      'Ordens de Serviço Ilimitadas todo mês',
+      'Gestão de Aparelhos e Equipamentos',
+      'Checklist de Entrada e Saída com Fotos',
+      'Frente de Caixa (PDV) e Vendas Balcão',
+      'Produtos, Peças e Insumos Ilimitados',
+      'Controle Financeiro de Caixa e DRE',
+      'Relatórios Gerenciais e Exportação PDF',
+    ],
+  },
+  {
+    id: 'completo_revenda',
+    nome: 'Plano Completo + Revenda',
+    valor: 79.90,
+    badge: 'COMPLETO + REVENDA',
+    subtitulo: 'Módulo completo de revendedores e atacado',
+    descricao: 'Tudo da Assistência Técnica + Módulo de Revenda, Atacado e Consignados.',
+    cor: 'purple',
+    recursos: [
+      'Tudo do Plano Assistência Técnica incluso',
+      'Módulo de Revendedores e Atacado Completo',
+      'Tabela de Preços Diferenciada (Varejo vs Revenda)',
+      'Cadastro e Gestão de Revendedores Parceiros',
+      'Controle Automático de Comissões de Revenda',
+      'Vendas Consignadas e Fechamento no PDV',
+    ],
+  },
+];
 
 export const INITIAL_ASSISTENCIAS: Assistencia[] = [
   {
@@ -290,6 +346,18 @@ export function formatCNPJ(cnpj: string): string {
   const digits = cleanCNPJ(cnpj);
   if (digits.length !== 14) return cnpj;
   return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}
+
+export function addDays(days: number, fromDate?: string): string {
+  const baseDate = fromDate ? new Date(fromDate) : new Date();
+  if (isNaN(baseDate.getTime())) {
+    const today = new Date();
+    today.setDate(today.getDate() + days);
+    return today.toISOString().split('T')[0];
+  }
+  const target = new Date(baseDate);
+  target.setDate(target.getDate() + days);
+  return target.toISOString().split('T')[0];
 }
 
 export function add30Days(dateString: string): string {

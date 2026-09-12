@@ -1,22 +1,28 @@
 import React from 'react';
-import { Shield, Sparkles, RefreshCw, Plus, FileText, Zap, RotateCcw, Trash2, Database } from 'lucide-react';
+import { Shield, Sparkles, RefreshCw, Plus, FileText, Zap, RotateCcw, Trash2, Database, LogOut, Key, Users } from 'lucide-react';
 import { StatsFinanceiro } from '../types';
 import { formatCurrencyBRL } from '../data/mockData';
 
 interface HeaderProps {
   stats: StatsFinanceiro;
+  totalGestorUsers?: number;
   onOpenNewStoreModal: () => void;
   onOpenExtratoModal: () => void;
+  onOpenGestorUsersModal?: () => void;
   onZeroData: () => void;
   onLoadDemoData: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   stats,
+  totalGestorUsers = 0,
   onOpenNewStoreModal,
   onOpenExtratoModal,
+  onOpenGestorUsersModal,
   onZeroData,
   onLoadDemoData,
+  onLogout,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-8 py-4">
@@ -48,16 +54,16 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="inline-block w-1 h-1 rounded-full bg-slate-600"></span>
               <span className="text-emerald-400 font-medium flex items-center gap-1">
                 <Database className="w-3 h-3 text-emerald-400 fill-emerald-400" />
-                Firestore Realtime (empresas / pagamentos)
+                Firestore Conectado
               </span>
             </p>
           </div>
         </div>
 
         {/* Quick Ticker & Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Quick Info Pill */}
-          <div className="hidden lg:flex items-center gap-3 bg-slate-950/60 border border-slate-800 px-3.5 py-1.5 rounded-xl text-xs">
+          <div className="hidden xl:flex items-center gap-3 bg-slate-950/60 border border-slate-800 px-3.5 py-1.5 rounded-xl text-xs">
             <div className="flex flex-col">
               <span className="text-slate-400">Total Faturado Mês</span>
               <span className="text-emerald-400 font-bold">{formatCurrencyBRL(stats.totalFaturadoMes)}</span>
@@ -68,6 +74,23 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-sky-400 font-bold">{stats.assinaturasAtivas} / {stats.totalAssistencias}</span>
             </div>
           </div>
+
+          {/* Botão Usuários & Senhas do Gestor (Firebase) */}
+          {onOpenGestorUsersModal && (
+            <button
+              onClick={onOpenGestorUsersModal}
+              className="px-3.5 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-200 border border-sky-500/30 transition-all text-xs font-bold flex items-center gap-2 shadow-sm"
+              title="Visualizar Usuários de Teste e Senhas Salvas no Firebase"
+            >
+              <Key className="w-4 h-4 text-sky-400" />
+              <span>Usuários & Senhas</span>
+              {totalGestorUsers > 0 && (
+                <span className="bg-sky-500 text-slate-950 px-1.5 py-0.2 rounded-full text-[10px] font-black">
+                  {totalGestorUsers}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Buttons */}
           <button
@@ -93,16 +116,27 @@ export const Header: React.FC<HeaderProps> = ({
             className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/60 transition-all text-xs font-semibold flex items-center gap-2"
           >
             <FileText className="w-4 h-4 text-emerald-400" />
-            <span>Extrato PIX MP</span>
+            <span>Extrato PIX</span>
           </button>
 
           <button
             onClick={onOpenNewStoreModal}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold transition-all shadow-lg shadow-emerald-500/20 text-xs flex items-center gap-2"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold transition-all shadow-lg shadow-emerald-500/20 text-xs flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Nova Assistência</span>
           </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-400 border border-slate-700/80 transition-all text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              title="Sair do painel"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

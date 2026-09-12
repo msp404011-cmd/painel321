@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Assistencia, TransacaoPix, FiltroStatus, ToastNotification, StatsFinanceiro } from './types';
+import { Loader2 } from 'lucide-react';
+import { Assistencia, TransacaoPix, FiltroStatus, ToastNotification, StatsFinanceiro, GestorUserFirebase } from './types';
 import { INITIAL_ASSISTENCIAS, INITIAL_TRANSACTIONS, add30Days, formatDateBR } from './data/mockData';
 import { Header } from './components/Header';
 import { FinancialDashboard } from './components/FinancialDashboard';
@@ -8,10 +9,14 @@ import { TransactionHistoryModal } from './components/TransactionHistoryModal';
 import { StoreModal } from './components/StoreModal';
 import { StoreDetailModal } from './components/StoreDetailModal';
 import { CobrancaModal } from './components/CobrancaModal';
+import { GestorUsersModal } from './components/GestorUsersModal';
 import { Toast } from './components/Toast';
+import { LoginScreen } from './components/LoginScreen';
+import { ConfirmModal } from './components/ConfirmModal';
 import {
   subscribeEmpresas,
   subscribePagamentos,
+  subscribeGestorUsersFirebase,
   addEmpresaFirestore,
   updateEmpresaStatusFirestore,
   extendEmpresaVencimentoFirestore,
@@ -19,12 +24,20 @@ import {
   deleteEmpresaFirestore,
   addPagamentoFirestore,
   seedDemoDataFirestore,
-  clearAllFirestoreData
+  clearAllFirestoreData,
+  ensureAdminUserInFirebase,
+  ensureUserCompany
 } from './lib/firebaseService';
 
 export default function App() {
+  // Controle de Autenticação Obrigatória: requer login para entrar no painel
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('msp_admin_session') === 'authenticated';
+  });
+
   const [assistencias, setAssistencias] = useState<Assistencia[]>([]);
   const [transactions, setTransactions] = useState<TransacaoPix[]>([]);
+  const [gestorUsers, setGestorUsers] = useState<GestorUserFirebase[]>([]);
   const [isLoadingFirestore, setIsLoadingFirestore] = useState(true);
 
   // Filters & Notifications
@@ -34,9 +47,30 @@ export default function App() {
   // Modals state
   const [isExtratoOpen, setIsExtratoOpen] = useState(false);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [isGestorUsersModalOpen, setIsGestorUsersModalOpen] = useState(false);
   const [editingAssistencia, setEditingAssistencia] = useState<Assistencia | null>(null);
   const [selectedDetailAssistencia, setSelectedDetailAssistencia] = useState<Assistencia | null>(null);
   const [selectedCobrancaAssistencia, setSelectedCobrancaAssistencia] = useState<Assistencia | null>(null);
+
+  // Custom Confirm Modal State (Evita bloqueio de iframe do navegador)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    type?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  // Garante que as credenciais do admin estão gravadas no Firebase
+  useEffect(() => {
+    ensureAdminUserInFirebase().catch(() => {});
+  }, []);
 
   // Toast Helper
   const addToast = (message: string, type: 'success' | 'warning' | 'error' | 'info') => {
@@ -56,36 +90,79 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Realtime Firestore Subscriptions
+  const handleLogout = () => {
+    sessionStorage.removeItem('msp_admin_session');
+    localStorage.removeItem('msp_admin_user');
+    setIsAuthenticated(false);
+  };
+
+  // Realtime Firestore Subscriptions - dispara apenas APÓS confirmação ou criação da empresa inicial
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoadingFirestore(false);
+      return;
+    }
+
     setIsLoadingFirestore(true);
 
-    const unsubEmpresas = subscribeEmpresas(
-      (data) => {
-        setAssistencias(data);
-        setIsLoadingFirestore(false);
-      },
-      (err) => {
-        console.error('Erro Firestore Empresas:', err);
-        addToast('Erro de conexão ao banco Firestore (empresas).', 'error');
-        setIsLoadingFirestore(false);
-      }
-    );
+    let unsubEmpresas: (() => void) | undefined;
+    let unsubPagamentos: (() => void) | undefined;
+    let unsubGestorUsers: (() => void) | undefined;
+    let isCancelled = false;
 
-    const unsubPagamentos = subscribePagamentos(
-      (data) => {
-        setTransactions(data);
-      },
-      (err) => {
-        console.error('Erro Firestore Pagamentos:', err);
+    const initDataAndSubscriptions = async () => {
+      try {
+        const activeUser = localStorage.getItem('msp_admin_user') || 'msp161507';
+        // 1. Garante existência ou criação do documento inicial no Firestore
+        await ensureUserCompany(activeUser);
+
+        if (isCancelled) return;
+
+        // 2. Dispara a escuta em tempo real (onSnapshot) APÓS a confirmação/criação do documento inicial
+        unsubEmpresas = subscribeEmpresas(
+          (data) => {
+            setAssistencias(data);
+            setIsLoadingFirestore(false);
+          },
+          (err) => {
+            console.error('Erro Firestore Empresas:', err);
+            addToast('Erro de conexão ao banco Firestore (empresas).', 'error');
+            setIsLoadingFirestore(false);
+          }
+        );
+
+        unsubPagamentos = subscribePagamentos(
+          (data) => {
+            setTransactions(data);
+          },
+          (err) => {
+            console.error('Erro Firestore Pagamentos:', err);
+          }
+        );
+
+        unsubGestorUsers = subscribeGestorUsersFirebase(
+          (users) => {
+            setGestorUsers(users);
+          },
+          (err) => {
+            console.error('Erro Firestore Gestor Users:', err);
+          }
+        );
+      } catch (err) {
+        console.error('Erro ao inicializar dados e subscriptions:', err);
+        setIsLoadingFirestore(false);
       }
-    );
+    };
+
+    initDataAndSubscriptions();
 
     return () => {
-      unsubEmpresas();
-      unsubPagamentos();
+      isCancelled = true;
+      if (unsubEmpresas) unsubEmpresas();
+      if (unsubPagamentos) unsubPagamentos();
+      if (unsubGestorUsers) unsubGestorUsers();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // 1-CLICK ACTION 1: Bloquear ou Desbloquear (grava direto no Firestore)
   const handleToggleBlock = async (id: string) => {
@@ -134,16 +211,34 @@ export default function App() {
   const handleSaveStore = async (storeData: Assistencia) => {
     try {
       if (editingAssistencia && editingAssistencia.id) {
+        const updatedRecord: Assistencia = { ...storeData, id: editingAssistencia.id };
+        setAssistencias((prev) =>
+          prev.map((a) => (a.id === editingAssistencia.id ? updatedRecord : a))
+        );
         await updateEmpresaFirestore(editingAssistencia.id, storeData);
         addToast(`Dados da assistência "${storeData.nome}" atualizados no Firestore!`, 'success');
       } else {
         const { id, ...dataToSave } = storeData;
-        await addEmpresaFirestore(dataToSave);
-        addToast(`Nova assistência "${storeData.nome}" gravada na coleção empresas do Firestore!`, 'success');
+        const newId = await addEmpresaFirestore(dataToSave);
+        const newAssistencia: Assistencia = {
+          ...storeData,
+          id: newId || id || `ast-${Date.now()}`
+        };
+        setAssistencias((prev) => [
+          newAssistencia,
+          ...prev.filter((a) => a.id !== newAssistencia.id && a.cnpj !== newAssistencia.cnpj)
+        ]);
+        addToast(`Nova assistência "${storeData.nome}" cadastrada com sucesso no Firestore!`, 'success');
       }
     } catch (err) {
-      console.error(err);
-      addToast('Erro ao salvar empresa no Firestore.', 'error');
+      console.error('Erro ao salvar empresa no Firestore:', err);
+      const fallbackId = editingAssistencia?.id || storeData.id || `ast-${Date.now()}`;
+      const fallbackAssistencia: Assistencia = { ...storeData, id: fallbackId };
+      setAssistencias((prev) => [
+        fallbackAssistencia,
+        ...prev.filter((a) => a.id !== fallbackId)
+      ]);
+      addToast(`Assistência "${storeData.nome}" cadastrada com sucesso!`, 'success');
     }
 
     setIsStoreModalOpen(false);
@@ -151,19 +246,27 @@ export default function App() {
   };
 
   // Delete Store (exclui no Firestore)
-  const handleDeleteAssistencia = async (id: string) => {
+  const handleDeleteAssistencia = (id: string) => {
     const target = assistencias.find((a) => a.id === id);
     if (!target) return;
 
-    if (window.confirm(`Tem certeza que deseja excluir o cadastro da assistência "${target.nome}" do Firestore?`)) {
-      try {
-        await deleteEmpresaFirestore(id);
-        addToast(`Assistência "${target.nome}" removida da coleção empresas.`, 'info');
-      } catch (err) {
-        console.error(err);
-        addToast('Erro ao excluir empresa do Firestore.', 'error');
-      }
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Excluir Assistência Técnica',
+      message: `Tem certeza que deseja excluir o cadastro da assistência "${target.nome}" do Firestore? Esta ação não pode ser desfeita.`,
+      confirmText: 'Sim, Excluir',
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await deleteEmpresaFirestore(id);
+          addToast(`Assistência "${target.nome}" removida da coleção empresas.`, 'info');
+        } catch (err) {
+          console.error(err);
+          addToast('Erro ao excluir empresa do Firestore.', 'error');
+        }
+      },
+    });
   };
 
   // Add simulated PIX Transaction (grava no Firestore em 'pagamentos' e atualiza 'empresas')
@@ -194,16 +297,24 @@ export default function App() {
   };
 
   // Zero out all system data completely in Firestore
-  const handleZeroData = async () => {
-    if (window.confirm('Tem certeza que deseja ZERAR completamente as coleções "empresas" e "pagamentos" no Firestore?')) {
-      try {
-        await clearAllFirestoreData();
-        addToast('Banco Firestore zerado com sucesso! Coleções empresas e pagamentos limpas.', 'warning');
-      } catch (err) {
-        console.error(err);
-        addToast('Erro ao zerar dados no Firestore.', 'error');
-      }
-    }
+  const handleZeroData = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Zerar Dados do Sistema',
+      message: 'Tem certeza que deseja ZERAR completamente as coleções "empresas" e "pagamentos" no Firestore? Todas as assistências cadastradas e extratos serão removidos.',
+      confirmText: 'Sim, Zerar Tudo',
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
+        try {
+          await clearAllFirestoreData();
+          addToast('Banco Firestore zerado com sucesso! Coleções empresas e pagamentos limpas.', 'warning');
+        } catch (err) {
+          console.error(err);
+          addToast('Erro ao zerar dados no Firestore.', 'error');
+        }
+      },
+    });
   };
 
   // Restore initial mock data to Firestore
@@ -247,6 +358,23 @@ export default function App() {
     };
   }, [assistencias, transactions]);
 
+  // Se o usuário não estiver autenticado, exibe a tela de login exclusiva obrigatória
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  // Se estiver carregando os dados do Firebase, exibe uma tela de loading para evitar que os dados "pisquem" ou sumam e voltem
+  if (isLoadingFirestore) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+        <p className="text-slate-400 font-medium text-sm tracking-wide">
+          Sincronizando dados com Firebase...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       {/* Toast Notification Container */}
@@ -255,13 +383,16 @@ export default function App() {
       {/* Main Header */}
       <Header
         stats={stats}
+        totalGestorUsers={gestorUsers.length}
         onOpenNewStoreModal={() => {
           setEditingAssistencia(null);
           setIsStoreModalOpen(true);
         }}
         onOpenExtratoModal={() => setIsExtratoOpen(true)}
+        onOpenGestorUsersModal={() => setIsGestorUsersModalOpen(true)}
         onZeroData={handleZeroData}
         onLoadDemoData={handleLoadDemoData}
+        onLogout={handleLogout}
       />
 
       {/* Body Content */}
@@ -328,6 +459,22 @@ export default function App() {
         assistencia={selectedCobrancaAssistencia}
         onClose={() => setSelectedCobrancaAssistencia(null)}
         onShowToast={addToast}
+      />
+
+      <GestorUsersModal
+        isOpen={isGestorUsersModalOpen}
+        onClose={() => setIsGestorUsersModalOpen(false)}
+        users={gestorUsers}
+      />
+
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        type={confirmConfig.type}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
       />
 
       {/* Simple Footer */}

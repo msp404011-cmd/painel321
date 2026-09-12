@@ -44,8 +44,6 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
   const [simCnpj, setSimCnpj] = useState('');
   const [simValor, setSimValor] = useState('299.90');
 
-  if (!isOpen) return null;
-
   const filtered = useMemo(() => {
     return transactions.filter((tx) => {
       if (filterStatus !== 'todos' && tx.status !== filterStatus) return false;
@@ -65,6 +63,8 @@ export const TransactionHistoryModal: React.FC<TransactionHistoryModalProps> = (
       .filter((t) => t.status === 'aprovado')
       .reduce((acc, curr) => acc + curr.valor, 0);
   }, [transactions]);
+
+  if (!isOpen) return null;
 
   const handleCopyPix = (code: string, id: string) => {
     navigator.clipboard.writeText(code);
