@@ -11,7 +11,8 @@ import {
   where,
   orderBy,
   getDocs,
-  writeBatch
+  writeBatch,
+  collectionGroup
 } from 'firebase/firestore';
 import { db, defaultDb, auth } from './firebase';
 import { Assistencia, TransacaoPix, StatusCliente, StatusTransacao, GestorUserFirebase, PlanoSaaS, PlanoGestorInfo } from '../types';
@@ -1151,7 +1152,22 @@ export function subscribeEmpresas(
   const emitMerged = () => {
     const combinedById = new Map<string, Assistencia>();
     sourceDocsMap.forEach((colMap) => {
-      colMap.forEach((item, id) => combinedById.set(id, item));
+      colMap.forEach((item, id) => {
+        if (!combinedById.has(id)) {
+          combinedById.set(id, { ...item });
+        } else {
+          const existing = combinedById.get(id)!;
+          if (item.nome && !item.nome.startsWith('Empresa #')) existing.nome = item.nome;
+          if (item.email && item.email !== 'contato@empresa.com') existing.email = item.email;
+          if (item.plano && item.plano !== 'Básico') existing.plano = item.plano;
+          if (item.valorMensalidade !== undefined && item.valorMensalidade > 0) existing.valorMensalidade = item.valorMensalidade;
+          if (item.status && item.status !== 'ativo') existing.status = item.status;
+          if (item.dataVencimento && item.dataVencimento !== new Date().toISOString().split('T')[0]) existing.dataVencimento = item.dataVencimento;
+          if (item.telefone && item.telefone !== '(00) 00000-0000') existing.telefone = item.telefone;
+          if (item.cnpj && item.cnpj !== '00.000.000/0001-00') existing.cnpj = item.cnpj;
+          combinedById.set(id, existing);
+        }
+      });
     });
 
     // Deduplicação inteligente também por CNPJ / Nome
@@ -1206,6 +1222,38 @@ export function subscribeEmpresas(
       unsubs.push(u1);
     } catch (e) {}
   });
+
+  // 1.5 Escuta a subcoleção settings (onde as assinaturas ficam)
+  try {
+    const cgUnsub = onSnapshot(
+      collectionGroup(db, 'settings'),
+      (snap) => {
+        const colMap = new Map<string, Assistencia>();
+        snap.docs.forEach(d => {
+          if (d.id === 'subscription') {
+            const tenantId = d.ref.parent.parent?.id;
+            if (tenantId) {
+              const data = d.data();
+              const base = mapDocToAssistencia(tenantId, data);
+              if (data.planName) base.plano = data.planName;
+              if (data.planPrice) {
+                const p = String(data.planPrice).replace(/[^0-9,.-]/g, '').replace(',', '.');
+                base.valorMensalidade = parseFloat(p) || 0;
+              }
+              if (data.status) base.status = (data.status === 'active' || data.status === 'ativo') ? 'ativo' : 'bloqueado';
+              if (data.expiryDate) base.dataVencimento = data.expiryDate;
+              if (data.accountEmail) base.email = data.accountEmail;
+              colMap.set(tenantId, base);
+            }
+          }
+        });
+        sourceDocsMap.set('cg_settings', colMap);
+        emitMerged();
+      },
+      () => {}
+    );
+    unsubs.push(cgUnsub);
+  } catch (e) {}
 
   // 2. Busca assíncrona única rápida e silenciosa (sem snapshot persistente) das outras coleções secundárias para compatibilidade completa
   const secondaryCollections = TARGET_COMPANY_COLLECTIONS.filter(c => !collectionsList.includes(c));
@@ -1827,6 +1875,51 @@ export function subscribeGestorUsersFirebase(
       unsubs.push(unsubDb);
     } catch (e) {}
   });
+
+  // 1.5. Escuta a subcoleção settings para capturar tenants puramente da subcoleção de assinaturas
+  try {
+    const cgUnsubUsers = onSnapshot(
+      collectionGroup(db, 'settings'),
+      (snap) => {
+        const colMap = new Map<string, GestorUserFirebase>();
+        snap.docs.forEach((d) => {
+          if (d.id === 'subscription') {
+            const tenantId = d.ref.parent.parent?.id;
+            if (tenantId) {
+              const data = d.data();
+              const userEmail = data.accountEmail || tenantId;
+              const userStatus: StatusCliente = (data.status === 'active' || data.status === 'ativo') ? 'ativo' : 'bloqueado';
+              let userValor = 0;
+              if (data.planPrice) {
+                const p = String(data.planPrice).replace(/[^0-9,.-]/g, '').replace(',', '.');
+                userValor = parseFloat(p) || 0;
+              }
+              
+              colMap.set(tenantId.toLowerCase(), {
+                id: tenantId,
+                usuario: tenantId.split('@')[0],
+                senha: '*** (Protegida)',
+                nome: `Empresa ${tenantId.split('@')[0]}`,
+                email: userEmail,
+                tipo: 'gestor',
+                empresa: 'Assistência Técnica',
+                status: userStatus,
+                valorMensalidade: userValor,
+                plano: data.planName || 'Básico',
+                telefone: '(00) 00000-0000',
+                dataCadastro: data.expiryDate || new Date().toISOString().split('T')[0],
+                origem: 'subscription'
+              });
+            }
+          }
+        });
+        docsMap.set('cg_settings_users', colMap);
+        emitMergedUsers();
+      },
+      () => {}
+    );
+    unsubs.push(cgUnsubUsers);
+  } catch (e) {}
 
   // 2. Busca única assíncrona rápida das coleções secundárias para compatibilidade de dados legados
   const secondaryUserCols = TARGET_USER_COLLECTIONS.filter(c => !collectionsList.includes(c));
