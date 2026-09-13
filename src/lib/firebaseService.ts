@@ -1404,11 +1404,11 @@ export function getStoreKeys(id: string): string[] {
  */
 export async function syncTenantSubscription(email: string | undefined, details: { planName?: string, planPriceNum?: number, status?: StatusCliente, expiryDate?: string }) {
   if (!email) return;
-  // Higieniza o e-mail: minúsculas e substitui pontos e @ por underline
-  const tenantId = email.toLowerCase().replace(/[.@]/g, '_');
+  // Mantém o e-mail completo em minúsculas
+  const tenantId = email.toLowerCase().trim();
   
   const payload: any = { 
-    accountEmail: email,
+    accountEmail: tenantId,
     features: ['os_ilimitadas', 'produtos_ilimitados', 'pdf_reports', 'backup_drive']
   };
   
