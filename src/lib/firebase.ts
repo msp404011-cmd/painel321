@@ -22,8 +22,8 @@ console.log("🔥 Conectado ao Firebase Project ID: painelgestor-11e67");
 // Initialize Auth
 export const auth = getAuth(app);
 
-// Initialize Firestore with specified databaseId
-export const db = getFirestore(app, "ai-studio-mspgestor777-18e70c55-3e3d-4e3c-89f2-b69d752bbb73");
+// Initialize Firestore
+export const db = getFirestore(app);
 
 // Default database instance for fallback
 export const defaultDb = getFirestore(app);

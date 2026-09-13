@@ -1438,7 +1438,10 @@ export async function syncTenantSubscription(email: string | undefined, details:
   // Higieniza o e-mail: minúsculas e substitui pontos e @ por underline
   const tenantId = email.toLowerCase().replace(/[.@]/g, '_');
   
-  const payload: any = { accountEmail: email };
+  const payload: any = { 
+    accountEmail: email,
+    features: ['os_ilimitadas', 'produtos_ilimitados', 'pdf_reports', 'backup_drive']
+  };
   
   if (details.planName) payload.planName = details.planName;
   if (details.planPriceNum !== undefined) {
