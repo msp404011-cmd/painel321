@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, Key } from 'lucide-react';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -9,6 +9,8 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'warning' | 'info';
+  requiresPassword?: boolean;
+  requiredPassword?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,9 +22,37 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
   type = 'danger',
+  requiresPassword = false,
+  requiredPassword = '',
   onConfirm,
   onCancel,
 }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPassword('');
+      setError(false);
+    }
+  }, [isOpen]);
+
+  const handleConfirm = () => {
+    if (requiresPassword && password !== requiredPassword) {
+      setError(true);
+      return;
+    }
+    setError(false);
+    setPassword('');
+    onConfirm();
+  };
+
+  const handleCancel = () => {
+    setError(false);
+    setPassword('');
+    onCancel();
+  };
+
   const getButtonStyles = () => {
     switch (type) {
       case 'danger':
@@ -58,10 +88,30 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               <div className="flex-1">
                 <h3 className="text-base font-bold text-white tracking-tight">{title}</h3>
                 <p className="text-xs text-slate-300 mt-2 leading-relaxed">{message}</p>
+                
+                {requiresPassword && (
+                  <div className="mt-4">
+                    <label className="text-xs font-semibold text-slate-400 flex items-center gap-1 mb-1.5">
+                      <Key className="w-3.5 h-3.5" />
+                      Senha de Segurança
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setError(false);
+                      }}
+                      placeholder="••••••••"
+                      className={`w-full bg-slate-950 border ${error ? 'border-rose-500 focus:ring-rose-500/20' : 'border-slate-800 focus:ring-sky-500/20'} rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 focus:ring-1`}
+                    />
+                    {error && <p className="text-xs text-rose-400 mt-1">Senha incorreta.</p>}
+                  </div>
+                )}
               </div>
 
               <button
-                onClick={onCancel}
+                onClick={handleCancel}
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -70,13 +120,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
             <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-slate-800/80">
               <button
-                onClick={onCancel}
+                onClick={handleCancel}
                 className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all cursor-pointer"
               >
                 {cancelText}
               </button>
               <button
-                onClick={onConfirm}
+                onClick={handleConfirm}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer ${getButtonStyles()}`}
               >
                 {confirmText}

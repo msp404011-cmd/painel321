@@ -10,7 +10,6 @@ interface HeaderProps {
   onOpenExtratoModal: () => void;
   onOpenGestorUsersModal?: () => void;
   onZeroData: () => void;
-  onLoadDemoData: () => void;
   onLogout?: () => void;
 }
 
@@ -21,7 +20,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExtratoModal,
   onOpenGestorUsersModal,
   onZeroData,
-  onLoadDemoData,
   onLogout,
 }) => {
   return (
@@ -100,15 +98,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-400" />
             <span className="hidden sm:inline">Zerar Tudo</span>
-          </button>
-
-          <button
-            onClick={onLoadDemoData}
-            className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-all text-xs font-semibold flex items-center gap-1.5"
-            title="Restaurar dados demonstrativos mock"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Carregar Demo</span>
           </button>
 
           <button

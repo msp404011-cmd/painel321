@@ -1146,7 +1146,7 @@ export function subscribeEmpresas(
 
   let firstEmitDone = false;
   let snapsFired = 0;
-  const EXPECTED_SNAPS = collectionsList.length * 2; // db and defaultDb
+  const EXPECTED_SNAPS = collectionsList.length; // removed * 2 since defaultDb is identical to db
 
   const emitMerged = () => {
     const combinedById = new Map<string, Assistencia>();
@@ -1205,23 +1205,6 @@ export function subscribeEmpresas(
       );
       unsubs.push(u1);
     } catch (e) {}
-
-    try {
-      const u2 = onSnapshot(
-        collection(defaultDb, colName),
-        (snap) => {
-          snapsFired++;
-          const colMap = new Map<string, Assistencia>();
-          snap.docs.forEach(d => colMap.set(d.id, mapDocToAssistencia(d.id, d.data())));
-          sourceDocsMap.set(`default_${colName}`, colMap);
-          if (snapsFired >= EXPECTED_SNAPS || colMap.size > 0) {
-            emitMerged();
-          }
-        },
-        () => {}
-      );
-      unsubs.push(u2);
-    } catch (e) {}
   });
 
   // 2. Busca assíncrona única rápida e silenciosa (sem snapshot persistente) das outras coleções secundárias para compatibilidade completa
@@ -1233,16 +1216,6 @@ export function subscribeEmpresas(
         const colMap = sourceDocsMap.get(`db_sec_${colName}`) || new Map<string, Assistencia>();
         snap1.docs.forEach(d => colMap.set(d.id, mapDocToAssistencia(d.id, d.data())));
         sourceDocsMap.set(`db_sec_${colName}`, colMap);
-        emitMerged();
-      }
-    } catch (e) {}
-
-    try {
-      const snap2 = await getDocs(collection(defaultDb, colName));
-      if (!snap2.empty) {
-        const colMap = sourceDocsMap.get(`def_sec_${colName}`) || new Map<string, Assistencia>();
-        snap2.docs.forEach(d => colMap.set(d.id, mapDocToAssistencia(d.id, d.data())));
-        sourceDocsMap.set(`def_sec_${colName}`, colMap);
         emitMerged();
       }
     } catch (e) {}
@@ -1275,10 +1248,6 @@ export function subscribePagamentos(
     try {
       const u1 = onSnapshot(collection(db, colName), (snap) => handleUpdate(snap.docs), () => {});
       unsubs.push(u1);
-    } catch (e) {}
-    try {
-      const u2 = onSnapshot(collection(defaultDb, colName), (snap) => handleUpdate(snap.docs), () => {});
-      unsubs.push(u2);
     } catch (e) {}
   });
 
@@ -1457,9 +1426,6 @@ export async function syncTenantSubscription(email: string | undefined, details:
   const savePromises = [];
   try {
     savePromises.push(setDoc(doc(db, 'user_accounts', tenantId, 'settings', 'subscription'), payload, { merge: true }).catch(() => {}));
-  } catch(e) {}
-  try {
-    savePromises.push(setDoc(doc(defaultDb, 'user_accounts', tenantId, 'settings', 'subscription'), payload, { merge: true }).catch(() => {}));
   } catch(e) {}
   
   await Promise.allSettled(savePromises);
@@ -1860,63 +1826,6 @@ export function subscribeGestorUsersFirebase(
       );
       unsubs.push(unsubDb);
     } catch (e) {}
-
-    try {
-      const colMapDef = new Map<string, GestorUserFirebase>();
-      docsMap.set(`def_${colName}`, colMapDef);
-
-      const unsubDef = onSnapshot(
-        collection(defaultDb, colName),
-        (snap) => {
-          colMapDef.clear();
-          snap.forEach((d) => {
-            const data = d.data();
-            const rawUser = extractUsuarioFirestore(d.id, data);
-            const rawSenha = extractSenhaFirestore(data);
-            const rawNome = data.nome || data.name || data.nomeResponsavel || data.responsavel || data.razaoSocial || rawUser;
-            const rawEmail = data.email || data.userEmail || `${rawUser}@empresa.com`;
-            const rawEmpresa = data.empresa || data.nomeEmpresa || data.nome || data.razaoSocial || data.storeName || 'Assistência Técnica';
-            const rawPlano = extractPlanoFirestore(data);
-            const rawValor = extractValorFirestore(data);
-            
-            let userType: GestorUserFirebase['tipo'] = 'gestor';
-            if (rawUser === 'msp161507' || data.role === 'superadmin') userType = 'superadmin';
-            else if (data.role === 'admin') userType = 'admin';
-            else if (data.role === 'gestor') userType = 'gestor';
-            else if (data.role === 'cliente') userType = 'cliente';
-            else if (data.role === 'teste' || data.isTrial || data.emTeste) userType = 'teste';
-            
-            let userStatus: StatusCliente = 'ativo';
-            if (data.status === 'bloqueado' || data.bloqueado) userStatus = 'bloqueado';
-            else if (data.status === 'inadimplente' || data.inadimplente) userStatus = 'inadimplente';
-            else if (data.status === 'teste' || data.status === 'trial' || data.isTrial) userStatus = 'teste';
-            else if (data.status === 'teste_pendente') userStatus = 'teste_pendente';
-
-            const gestorUser: GestorUserFirebase = {
-              id: d.id,
-              usuario: rawUser,
-              senha: rawSenha,
-              nome: rawNome,
-              email: rawEmail,
-              tipo: userType,
-              empresa: rawEmpresa,
-              status: userStatus,
-              valorMensalidade: rawValor,
-              plano: rawPlano,
-              telefone: data.telefone || data.phone || data.celular || '(11) 98765-4321',
-              dataCadastro: data.dataCadastro || data.createdAt || data.criadoEm || new Date().toISOString().split('T')[0],
-              origem: colName
-            };
-
-            colMapDef.set(rawUser, gestorUser);
-          });
-
-          emitMergedUsers();
-        },
-        () => {}
-      );
-      unsubs.push(unsubDef);
-    } catch (e) {}
   });
 
   // 2. Busca única assíncrona rápida das coleções secundárias para compatibilidade de dados legados
@@ -1971,11 +1880,6 @@ export function subscribeGestorUsersFirebase(
     try {
       const snap1 = await getDocs(collection(db, colName));
       processSecData(snap1, 'db');
-    } catch (e) {}
-
-    try {
-      const snap2 = await getDocs(collection(defaultDb, colName));
-      processSecData(snap2, 'def');
     } catch (e) {}
   });
 
@@ -2096,11 +2000,6 @@ export async function clearAllFirestoreData(): Promise<void> {
       const deletes = snap.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletes);
     } catch (e) {}
-    try {
-      const snapDef = await getDocs(collection(defaultDb, col));
-      const deletesDef = snapDef.docs.map(d => deleteDoc(d.ref));
-      await Promise.all(deletesDef);
-    } catch (e) {}
   }
 
   for (const col of TARGET_PAYMENT_COLLECTIONS) {
@@ -2109,18 +2008,6 @@ export async function clearAllFirestoreData(): Promise<void> {
       const deletes = snap.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletes);
     } catch (e) {}
-    try {
-      const snapDef = await getDocs(collection(defaultDb, col));
-      const deletesDef = snapDef.docs.map(d => deleteDoc(d.ref));
-      await Promise.all(deletesDef);
-    } catch (e) {}
   }
-}
-
-/**
- * Popula dados de demonstração no Firestore
- */
-export async function seedDemoDataFirestore(): Promise<void> {
-  await ensureAdminUserInFirebase();
 }
 

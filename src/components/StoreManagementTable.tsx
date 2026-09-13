@@ -143,13 +143,14 @@ export const StoreManagementTable: React.FC<StoreManagementTableProps> = ({
       return (
         <span className="text-[11px] font-semibold text-amber-300 flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          Vence em {diffDays} dias
+          Restam {diffDays} dias
         </span>
       );
     } else {
       return (
-        <span className="text-[11px] font-medium text-slate-400">
-          Vence em {diffDays} dias
+        <span className="text-[11px] font-medium text-emerald-400 flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          Faltam {diffDays} dias
         </span>
       );
     }

@@ -59,6 +59,8 @@ export default function App() {
     message: string;
     confirmText?: string;
     type?: 'danger' | 'warning' | 'info';
+    requiresPassword?: boolean;
+    requiredPassword?: string;
     onConfirm: () => void;
   }>({
     isOpen: false,
@@ -304,6 +306,8 @@ export default function App() {
       message: 'Tem certeza que deseja ZERAR completamente as coleções "empresas" e "pagamentos" no Firestore? Todas as assistências cadastradas e extratos serão removidos.',
       confirmText: 'Sim, Zerar Tudo',
       type: 'danger',
+      requiresPassword: true,
+      requiredPassword: '1507',
       onConfirm: async () => {
         setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
         try {
@@ -315,17 +319,6 @@ export default function App() {
         }
       },
     });
-  };
-
-  // Restore initial mock data to Firestore
-  const handleLoadDemoData = async () => {
-    try {
-      await seedDemoDataFirestore();
-      addToast('Dados de demonstração gerados nas coleções "empresas" e "pagamentos" do Firestore!', 'success');
-    } catch (err) {
-      console.error(err);
-      addToast('Erro ao carregar dados de demonstração no Firestore.', 'error');
-    }
   };
 
   // Stats computation
@@ -391,7 +384,6 @@ export default function App() {
         onOpenExtratoModal={() => setIsExtratoOpen(true)}
         onOpenGestorUsersModal={() => setIsGestorUsersModalOpen(true)}
         onZeroData={handleZeroData}
-        onLoadDemoData={handleLoadDemoData}
         onLogout={handleLogout}
       />
 
@@ -473,6 +465,8 @@ export default function App() {
         message={confirmConfig.message}
         confirmText={confirmConfig.confirmText}
         type={confirmConfig.type}
+        requiresPassword={confirmConfig.requiresPassword}
+        requiredPassword={confirmConfig.requiredPassword}
         onConfirm={confirmConfig.onConfirm}
         onCancel={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
       />
