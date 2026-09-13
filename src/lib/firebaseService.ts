@@ -1384,6 +1384,15 @@ export async function addEmpresaFirestore(empresa: Omit<Assistencia, 'id'>): Pro
       tipo: 'gestor'
     }).catch(() => {})
   );
+  
+  if (cleanEmail) {
+    savePromises.push(syncTenantSubscription(cleanEmail, {
+      planName: empresa.plano,
+      planPriceNum: valNum,
+      status: cleanStatus,
+      expiryDate: empresa.dataVencimento
+    }).catch(() => {}));
+  }
 
   // Aguarda até 900ms para gravações primárias concluírem sem travar o usuário
   await Promise.race([
@@ -1421,6 +1430,38 @@ export function getStoreKeys(id: string): string[] {
 }
 
 /**
+ * Atualiza o documento de subscription do GESTOR (multitenant)
+ * Caminho: user_accounts/{tenantId}/settings/subscription
+ */
+export async function syncTenantSubscription(email: string | undefined, details: { planName?: string, planPriceNum?: number, status?: StatusCliente, expiryDate?: string }) {
+  if (!email) return;
+  const tenantId = email.toLowerCase().replace(/[@.]/g, '_');
+  
+  const payload: any = { accountEmail: email };
+  
+  if (details.planName) payload.planName = details.planName;
+  if (details.planPriceNum !== undefined) {
+    payload.planPrice = `R$ ${Number(details.planPriceNum).toFixed(2).replace('.', ',')}`;
+  }
+  if (details.status) {
+    payload.status = (details.status === 'ativo' || details.status === 'teste' || details.status === 'teste_pendente') ? 'active' : 'expired';
+  }
+  if (details.expiryDate) {
+    payload.expiryDate = details.expiryDate;
+  }
+  
+  const savePromises = [];
+  try {
+    savePromises.push(setDoc(doc(db, 'user_accounts', tenantId, 'settings', 'subscription'), payload, { merge: true }).catch(() => {}));
+  } catch(e) {}
+  try {
+    savePromises.push(setDoc(doc(defaultDb, 'user_accounts', tenantId, 'settings', 'subscription'), payload, { merge: true }).catch(() => {}));
+  } catch(e) {}
+  
+  await Promise.allSettled(savePromises);
+}
+
+/**
  * Atualiza o status de uma empresa no Firestore (ativo, bloqueado, inadimplente)
  */
 export async function updateEmpresaStatusFirestore(id: string, newStatus: StatusCliente) {
@@ -1455,6 +1496,21 @@ export async function updateEmpresaStatusFirestore(id: string, newStatus: Status
       savePromises.push(setDoc(doc(db, col, key), payload, { merge: true }).catch(() => {}));
       savePromises.push(setDoc(doc(defaultDb, col, key), payload, { merge: true }).catch(() => {}));
     }
+  }
+  
+  // Encontra o email real no cache para syncTenantSubscription
+  let realEmail = '';
+  try {
+    const cached = localStorage.getItem('msp_empresas_cache');
+    if (cached) {
+      const list: Assistencia[] = JSON.parse(cached);
+      const matched = list.find(item => keys.includes(item.id) || keys.includes(item.loginUsuario || '') || keys.includes(item.email || ''));
+      if (matched && matched.email) realEmail = matched.email;
+    }
+  } catch (e) {}
+
+  if (realEmail) {
+    savePromises.push(syncTenantSubscription(realEmail, { status: newStatus }).catch(() => {}));
   }
 
   // Aguarda a sincronização completa rápida
@@ -1501,6 +1557,20 @@ export async function extendEmpresaVencimentoFirestore(id: string, novaData: str
       savePromises.push(setDoc(doc(db, col, key), payload, { merge: true }).catch(() => {}));
       savePromises.push(setDoc(doc(defaultDb, col, key), payload, { merge: true }).catch(() => {}));
     }
+  }
+  
+  let realEmail = '';
+  try {
+    const cached = localStorage.getItem('msp_empresas_cache');
+    if (cached) {
+      const list: Assistencia[] = JSON.parse(cached);
+      const matched = list.find(item => keys.includes(item.id) || keys.includes(item.loginUsuario || '') || keys.includes(item.email || ''));
+      if (matched && matched.email) realEmail = matched.email;
+    }
+  } catch (e) {}
+
+  if (realEmail) {
+    savePromises.push(syncTenantSubscription(realEmail, { expiryDate: novaData, status: 'ativo' }).catch(() => {}));
   }
 
   await Promise.race([
@@ -1581,6 +1651,26 @@ export async function updateEmpresaFirestore(id: string, dados: Partial<Assisten
       savePromises.push(setDoc(doc(db, col, key), updateData, { merge: true }).catch(() => {}));
       savePromises.push(setDoc(doc(defaultDb, col, key), updateData, { merge: true }).catch(() => {}));
     }
+  }
+
+  let realEmail = '';
+  try {
+    const cached = localStorage.getItem('msp_empresas_cache');
+    if (cached) {
+      const list: Assistencia[] = JSON.parse(cached);
+      const matched = list.find(item => keys.includes(item.id) || keys.includes(item.loginUsuario || '') || keys.includes(item.email || ''));
+      if (matched && matched.email) realEmail = matched.email;
+    }
+  } catch (e) {}
+
+  if (realEmail || dados.email) {
+    const targetEmail = dados.email || realEmail;
+    savePromises.push(syncTenantSubscription(targetEmail, {
+      planName: dados.plano,
+      planPriceNum: dados.valorMensalidade,
+      status: dados.status,
+      expiryDate: dados.dataVencimento
+    }).catch(() => {}));
   }
 
   await Promise.race([
